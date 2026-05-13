@@ -1,5 +1,5 @@
 import pytest
-from vox4ai_skill import TTSSkill
+from vox4ai_skill_lib import TTSSkill
 from tts_plugin_bridge import ConnectorFactory
 from tts_plugin_bridge.protocol import TTSConnector, TTSRequest, TTSResponse
 
