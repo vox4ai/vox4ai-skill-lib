@@ -14,4 +14,4 @@ dist/
 *.log
 .env
 .env.local
-uv.lock
+uv.lockGEMINI.md
