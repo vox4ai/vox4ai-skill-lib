@@ -1,16 +1,37 @@
 # vox4ai-skill-lib
 
+<p align="center">
+  <img src="https://via.placeholder.com/1200x400/1a1a1a/ffffff?text=vox4ai-skill-lib" alt="vox4ai-skill-lib Banner" width="1200">
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/pypi-latest-blue.svg" alt="PyPI version">
+  <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License">
+  <img src="https://img.shields.io/badge/python-3.10%2B-yellow.svg" alt="Python Version">
+  <img src="https://img.shields.io/badge/maintained%3F-yes-brightgreen.svg" alt="Maintained">
+</p>
+
+<p align="center">
+  <a href="https://github.com/vox4ai/vox4ai-skill-lib">Website</a> •
+  <a href="https://github.com/vox4ai/vox4ai-skill-lib/issues">Report Bug</a> •
+  <a href="https://github.com/vox4ai/vox4ai-skill-lib/contributing">Contributing</a>
+</p>
+
+---
+
+## 🚀 Overview
+
 Python ライブラリとしての TTS Skill — AI agent や CLI から `tts-plugin-bridge` の TTS Engine を統一的に操作します。
 
-## インストール
+## 📦 Installation
 
 ```bash
 uv add vox4ai-skill-lib
 ```
 
-## 使い方
+## 🛠 Usage
 
-### TTSSkill（推奨）
+### 🧩 TTSSkill（推奨）
 
 ```python
 import asyncio
@@ -37,7 +58,7 @@ async def main():
 asyncio.run(main())
 ```
 
-### API 関数（簡易呼び出し用）
+### ⌨️ API 関数（簡易呼び出し用）
 
 ```python
 import asyncio
@@ -52,17 +73,17 @@ async def main():
 asyncio.run(main())
 ```
 
-## TTSSkill API
+### 📑 TTSSkill API
 
 | メソッド | 説明 |
 |----------|------|
 | `synthesize()` | 音声合成 → Base64 音声データを dict で返す |
-| `save()` | synthesize() のエイリアス |
+| `save()` | `synthesize()` のエイリアス |
 | `play()` | ストリーミング再生（ffplay）またはファイル再生（paplay/aplay） |
-| `say()` | play() のエイリアス |
+| `say()` | `play()` のエイリアス |
 | `close()` | 全コネクタをクローズ |
 
-全メソッドで `model` / `pitch` / `volume` / `style_id` / `engine` を **kwargs として受け付けます。
+全メソッドで `model` / `pitch` / `volume` / `style_id` / `engine` を **kwargs として受け付けます**。
 
 コンテキストマネージャ対応:
 
@@ -72,7 +93,7 @@ async with TTSSkill(default_engine="edgetts") as skill:
 # close() 自動呼び出し
 ```
 
-## API 関数
+### 📑 API 関数
 
 | 関数 | 説明 |
 |------|------|
@@ -81,11 +102,11 @@ async with TTSSkill(default_engine="edgetts") as skill:
 | `play_text()` | テキスト読み上げ（ストリーミング + ファイルフォールバック） |
 | `test_connection()` | TTS Engine への接続テスト |
 
-## 依存
+## 📦 Dependencies
 
 - `tts-plugin-bridge` — コアフレームワーク（protocol / factory / chunker）
 - `aiohttp` — 非同期 HTTP
 
-## ライセンス
+## 📜 License
 
 MIT License
