@@ -16,3 +16,4 @@ dist/
 .env.local
 uv.lock
 GEMINI.md
+.coverage
