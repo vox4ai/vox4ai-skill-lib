@@ -35,7 +35,9 @@ async def synthesize_text(
     chunk_config: Optional[ChunkConfig] = None,
 ):
     try:
-        async with TTSSkill(default_engine=engine or "piperplus", **engine_kwargs) as skill:
+        async with TTSSkill(
+            default_engine=engine or "piperplus", **engine_kwargs
+        ) as skill:
             kwargs = {}
             if volume is not None:
                 kwargs["volume"] = volume
@@ -47,7 +49,9 @@ async def synthesize_text(
                 kwargs["chunk"] = True
                 kwargs["chunk_config"] = chunk_config
 
-            result = await skill.synthesize(text=text, speed=speed, engine=engine, **kwargs)
+            result = await skill.synthesize(
+                text=text, speed=speed, engine=engine, **kwargs
+            )
 
             if result["status"] == "ok":
                 import base64
@@ -62,13 +66,19 @@ async def synthesize_text(
                 elif play:
                     ok = await _play_audio(audio_data)
                     if not ok:
-                        print("エラー: 再生に使えるコマンド (paplay / aplay) が見つかりません。")
+                        print(
+                            "エラー: 再生に使えるコマンド (paplay / aplay) が見つかりません。"
+                        )
                         return 1
                     print(f"✅ 再生完了 (エンジン: {result['engine']})")
                 else:
                     print(f"エンジン: {result['engine']}")
                     print(f"メッセージ: {result['message']}")
-                    print(f"音声データ (Base64): {result['audio_base64'][:100]}..." if result["audio_base64"] else "音声データ: None")
+                    print(
+                        f"音声データ (Base64): {result['audio_base64'][:100]}..."
+                        if result["audio_base64"]
+                        else "音声データ: None"
+                    )
                     if len(result["audio_base64"] or "") > 100:
                         print(f"... (全長: {len(result['audio_base64'] or '')} 文字)")
             else:
@@ -91,7 +101,9 @@ async def play_text(
     engine_kwargs: dict,
 ):
     try:
-        async with TTSSkill(default_engine=engine or "piperplus", **engine_kwargs) as skill:
+        async with TTSSkill(
+            default_engine=engine or "piperplus", **engine_kwargs
+        ) as skill:
             kwargs = {}
             if volume is not None:
                 kwargs["volume"] = volume
@@ -113,13 +125,19 @@ async def play_text(
     return 0
 
 
-async def test_connection(engine: Optional[str], style_id: Optional[int], engine_kwargs: dict):
+async def test_connection(
+    engine: Optional[str], style_id: Optional[int], engine_kwargs: dict
+):
     try:
-        async with TTSSkill(default_engine=engine or "piperplus", **engine_kwargs) as skill:
+        async with TTSSkill(
+            default_engine=engine or "piperplus", **engine_kwargs
+        ) as skill:
             kwargs = {}
             if style_id is not None:
                 kwargs["style_id"] = style_id
-            result = await skill.synthesize(text="テスト", speed=1.0, engine=engine, **kwargs)
+            result = await skill.synthesize(
+                text="テスト", speed=1.0, engine=engine, **kwargs
+            )
 
             if result["status"] == "ok":
                 print("✅ 接続成功!")
