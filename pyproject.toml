@@ -6,12 +6,35 @@ build-backend = "hatchling.build"
 name = "vox4ai-skill-lib"
 version = "0.1.0"
 description = "TTS skill for AI agents — synthesize, play, save speech via tts-plugin-bridge"
+readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "tts-plugin-bridge",
     "aiohttp",
 ]
 license = {text = "MIT"}
+authors = [
+    {name = "vox4ai", email = "vox4ai@example.com"},
+]
+keywords = ["tts", "tts-plugin", "voice", "speech", "synthesis", "agent-skill", "ai-agent"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Multimedia :: Sound/Audio :: Speech",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+[project.urls]
+Homepage = "https://github.com/vox4ai/vox4ai-skill-lib"
+Repository = "https://github.com/vox4ai/vox4ai-skill-lib"
+Issues = "https://github.com/vox4ai/vox4ai-skill-lib/issues"
 
 [tool.uv.sources]
 tts-plugin-bridge = { path = "../tts-plugin-bridge", editable = true }
@@ -22,6 +45,8 @@ dev = [
     "pytest>=9.0.3",
     "pytest-asyncio>=1.3.0",
     "ruff>=0.15.12",
+    "build>=1.0",
+    "twine>=6.0",
 ]
 
 [tool.ruff]
