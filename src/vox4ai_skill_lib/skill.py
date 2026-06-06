@@ -1,15 +1,55 @@
 import base64
 import os
 import asyncio
+from dataclasses import dataclass, field
+from typing import Optional
 
 from tts_plugin_bridge import ConnectorFactory
 from tts_plugin_bridge.protocol import (
     TTSRequest,
-    TTSResponse,
     TTSConnector,
     ChunkConfig,
 )
-from typing import Optional
+
+
+@dataclass
+class TTSResult:
+    """TTSSkill の戻り値型。
+
+    旧 `dict` 戻り値の後継。`status` は文字列リテラルに近く扱われるため
+    比較的安全だが、`audio_base64` 等の存在を型レベルで示せる。
+    """
+
+    status: str
+    message: str = ""
+    engine: Optional[str] = None
+    audio_base64: Optional[str] = None
+    extras: dict = field(default_factory=dict)
+
+    @property
+    def ok(self) -> bool:
+        return self.status == "ok"
+
+    @property
+    def error(self) -> Optional[str]:
+        return self.message if self.status == "error" else None
+
+    @classmethod
+    def ok_result(cls, *, engine: str, message: str = "", **extras) -> "TTSResult":
+        return cls(status="ok", message=message, engine=engine, extras=extras)
+
+    @classmethod
+    def err_result(cls, message: str, *, engine: Optional[str] = None) -> "TTSResult":
+        return cls(status="error", message=message, engine=engine)
+
+    def to_legacy_dict(self) -> dict:
+        """既存呼び出しコードとの後方互換用。"""
+        d = {"status": self.status, "message": self.message}
+        if self.engine is not None:
+            d["engine"] = self.engine
+        if self.audio_base64 is not None:
+            d["audio_base64"] = self.audio_base64
+        return d
 
 
 class TTSSkill:
@@ -30,6 +70,91 @@ class TTSSkill:
             self._cache[engine] = ConnectorFactory.create(engine, **kwargs)
         return self._cache[engine]
 
+    def _filter_extra(
+        self, connector: TTSConnector, kwargs: dict
+    ) -> dict:
+        return {
+            k: v for k, v in kwargs.items() if k in connector.get_supported_params()
+        }
+
+    def _build_request(
+        self,
+        text: str,
+        speed: float,
+        volume: Optional[float],
+        model: Optional[str],
+        extra: dict,
+    ) -> TTSRequest:
+        return TTSRequest(
+            text=text,
+            speed=speed,
+            volume=volume,
+            model=model,
+            extra=extra,
+        )
+
+    async def _synthesize_chunks(
+        self,
+        connector: TTSConnector,
+        text: str,
+        speed: float,
+        volume: Optional[float],
+        model: Optional[str],
+        extra: dict,
+        chunk_config: Optional[ChunkConfig],
+    ) -> TTSResult:
+        from tts_plugin_bridge.chunker import (
+            HybridChunker,
+            ChunkConfig as ChunkerConfig,
+        )
+
+        config = chunk_config or ChunkerConfig()
+        chunks = HybridChunker().chunk(text, config)
+
+        combined = bytearray()
+        for c in chunks:
+            req = self._build_request(c.text, speed, volume, model, extra)
+            res = await connector.synthesize(req)
+            if not res.success:
+                return TTSResult.err_result(
+                    f"Error in chunk {c.index}: {res.error}",
+                    engine=connector.name,
+                )
+            if res.audio_data:
+                combined.extend(res.audio_data)
+
+        if not combined:
+            return TTSResult.err_result("No audio data was generated", engine=connector.name)
+
+        return TTSResult(
+            status="ok",
+            message=f"TTS synthesis completed ({len(chunks)} chunks)",
+            engine=connector.name,
+            audio_base64=base64.b64encode(combined).decode(),
+        )
+
+    async def _synthesize_once(
+        self,
+        connector: TTSConnector,
+        text: str,
+        speed: float,
+        volume: Optional[float],
+        model: Optional[str],
+        extra: dict,
+    ) -> TTSResult:
+        req = self._build_request(text, speed, volume, model, extra)
+        res = await connector.synthesize(req)
+        if not res.success:
+            return TTSResult.err_result(res.error, engine=connector.name)
+        return TTSResult(
+            status="ok",
+            message="TTS synthesis completed",
+            engine=connector.name,
+            audio_base64=base64.b64encode(res.audio_data).decode()
+            if res.audio_data
+            else None,
+        )
+
     async def synthesize(
         self,
         text: str,
@@ -39,79 +164,25 @@ class TTSSkill:
         chunk: bool = False,
         chunk_config: Optional[ChunkConfig] = None,
         **kwargs,
-    ) -> dict:
+    ) -> TTSResult:
         target = engine or self.default_engine
         connector = await self._get_connector(target)
 
         if not await connector.is_available():
-            return {
-                "status": "error",
-                "message": f"{connector.name} server not reachable",
-            }
-
-        if chunk:
-            from tts_plugin_bridge.chunker import (
-                HybridChunker,
-                ChunkConfig as ChunkerConfig,
+            return TTSResult.err_result(
+                f"{connector.name} server not reachable", engine=connector.name
             )
 
-            actual_config = chunk_config or ChunkerConfig()
-            chunker = HybridChunker()
-            chunks_to_process = chunker.chunk(text, actual_config)
+        extra = self._filter_extra(connector, kwargs)
+        model = kwargs.get("model")
 
-            combined_audio = bytearray()
-            supported = {
-                k: v for k, v in kwargs.items() if k in connector.get_supported_params()
-            }
-            for chunk_res in chunks_to_process:
-                req = TTSRequest(
-                    text=chunk_res.text,
-                    speed=speed,
-                    volume=volume,
-                    model=kwargs.get("model"),
-                    extra=supported,
-                )
-                res: TTSResponse = await connector.synthesize(req)
-                if not res.success:
-                    return {
-                        "status": "error",
-                        "message": f"Error in chunk {chunk_res.index}: {res.error}",
-                    }
-                if res.audio_data:
-                    combined_audio.extend(res.audio_data)
-
-            if not combined_audio:
-                return {"status": "error", "message": "No audio data was generated"}
-
-            return {
-                "status": "ok",
-                "engine": connector.name,
-                "audio_base64": base64.b64encode(combined_audio).decode(),
-                "message": f"TTS synthesis completed ({len(chunks_to_process)} chunks)",
-            }
-
-        extra = {
-            k: v for k, v in kwargs.items() if k in connector.get_supported_params()
-        }
-        req = TTSRequest(
-            text=text,
-            speed=speed,
-            volume=volume,
-            model=kwargs.get("model"),
-            extra=extra,
+        if chunk:
+            return await self._synthesize_chunks(
+                connector, text, speed, volume, model, extra, chunk_config
+            )
+        return await self._synthesize_once(
+            connector, text, speed, volume, model, extra
         )
-        res: TTSResponse = await connector.synthesize(req)
-
-        if res.success:
-            return {
-                "status": "ok",
-                "engine": connector.name,
-                "audio_base64": base64.b64encode(res.audio_data).decode()
-                if res.audio_data
-                else None,
-                "message": "TTS synthesis completed",
-            }
-        return {"status": "error", "message": res.error}
 
     async def save(
         self,
@@ -122,7 +193,7 @@ class TTSSkill:
         chunk: bool = False,
         chunk_config: Optional[ChunkConfig] = None,
         **kwargs,
-    ) -> dict:
+    ) -> TTSResult:
         return await self.synthesize(
             text, speed, volume, engine, chunk, chunk_config, **kwargs
         )
@@ -134,8 +205,52 @@ class TTSSkill:
         volume: Optional[float] = None,
         engine: Optional[str] = None,
         **kwargs,
-    ) -> dict:
+    ) -> TTSResult:
         return await self.play(text, speed, volume, engine, **kwargs)
+
+    async def _play_streaming(
+        self,
+        connector: TTSConnector,
+        req: TTSRequest,
+    ) -> TTSResult:
+        proc = await asyncio.create_subprocess_exec(
+            "ffplay",
+            "-nodisp",
+            "-autoexit",
+            "-",
+            "-loglevel",
+            "quiet",
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        async for chunk in connector.synthesize_stream(req):
+            proc.stdin.write(chunk)
+        await proc.stdin.drain()
+        proc.stdin.close()
+        await proc.wait()
+        return TTSResult.ok_result(
+            engine=connector.name, message="Streaming playback completed"
+        )
+
+    async def _play_fallback(
+        self,
+        connector: TTSConnector,
+        req: TTSRequest,
+    ) -> TTSResult:
+        res = await connector.synthesize(req)
+        if not res.success:
+            return TTSResult.err_result(res.error, engine=connector.name)
+        if not res.audio_data:
+            return TTSResult.err_result("No audio data generated", engine=connector.name)
+        ok = await _play_audio(res.audio_data)
+        if not ok:
+            return TTSResult.err_result(
+                "No audio player found (paplay / aplay)", engine=connector.name
+            )
+        return TTSResult.ok_result(
+            engine=connector.name, message="Playback completed"
+        )
 
     async def play(
         self,
@@ -144,68 +259,25 @@ class TTSSkill:
         volume: Optional[float] = None,
         engine: Optional[str] = None,
         **kwargs,
-    ) -> dict:
+    ) -> TTSResult:
         target = engine or self.default_engine
         connector = await self._get_connector(target)
 
         if not await connector.is_available():
-            return {
-                "status": "error",
-                "message": f"{connector.name} server not reachable",
-            }
+            return TTSResult.err_result(
+                f"{connector.name} server not reachable", engine=connector.name
+            )
 
-        extra = {
-            k: v for k, v in kwargs.items() if k in connector.get_supported_params()
-        }
-        req = TTSRequest(
-            text=text,
-            speed=speed,
-            volume=volume,
-            model=kwargs.get("model"),
-            extra=extra,
+        extra = self._filter_extra(connector, kwargs)
+        req = self._build_request(
+            text, speed, volume, kwargs.get("model"), extra
         )
 
         stream_method = getattr(connector, "synthesize_stream", None)
-        _ffplay_override = os.environ.get("FFPLAY_STREAMING", "1") == "1"
-        if stream_method is not None and _has_cmd("ffplay") and _ffplay_override:
-            proc = await asyncio.create_subprocess_exec(
-                "ffplay",
-                "-nodisp",
-                "-autoexit",
-                "-",
-                "-loglevel",
-                "quiet",
-                stdin=asyncio.subprocess.PIPE,
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.DEVNULL,
-            )
-            async for chunk in stream_method(req):
-                proc.stdin.write(chunk)
-            await proc.stdin.drain()
-            proc.stdin.close()
-            await proc.wait()
-            return {
-                "status": "ok",
-                "engine": connector.name,
-                "message": "Streaming playback completed",
-            }
-        else:
-            res: TTSResponse = await connector.synthesize(req)
-            if not res.success:
-                return {"status": "error", "message": res.error}
-            if not res.audio_data:
-                return {"status": "error", "message": "No audio data generated"}
-            ok = await _play_audio(res.audio_data)
-            if not ok:
-                return {
-                    "status": "error",
-                    "message": "No audio player found (paplay / aplay)",
-                }
-            return {
-                "status": "ok",
-                "engine": connector.name,
-                "message": "Playback completed",
-            }
+        ffplay_enabled = os.environ.get("FFPLAY_STREAMING", "1") == "1"
+        if stream_method is not None and _has_cmd("ffplay") and ffplay_enabled:
+            return await self._play_streaming(connector, req)
+        return await self._play_fallback(connector, req)
 
     async def close(self):
         for conn in self._cache.values():
@@ -221,11 +293,13 @@ def _has_cmd(name: str) -> bool:
 
 async def _play_audio(data: bytes) -> bool:
     import os
+    import tempfile
 
-    tmp = "/tmp/_tts_play.wav"
-    with open(tmp, "wb") as f:
-        f.write(data)
+    fd, tmp = tempfile.mkstemp(suffix=".wav", prefix="_vox4ai_play_")
+    os.close(fd)
     try:
+        with open(tmp, "wb") as f:
+            f.write(data)
         player = None
         if _has_cmd("paplay"):
             player = "paplay"

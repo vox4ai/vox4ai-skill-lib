@@ -1,3 +1,5 @@
+import base64
+
 from tts_plugin_bridge import ConnectorFactory
 from tts_plugin_bridge.protocol import ChunkConfig
 
@@ -38,7 +40,7 @@ async def synthesize_text(
         async with TTSSkill(
             default_engine=engine or "piperplus", **engine_kwargs
         ) as skill:
-            kwargs = {}
+            kwargs: dict = {}
             if volume is not None:
                 kwargs["volume"] = volume
             if pitch is not None:
@@ -53,16 +55,14 @@ async def synthesize_text(
                 text=text, speed=speed, engine=engine, **kwargs
             )
 
-            if result["status"] == "ok":
-                import base64
-
-                audio_data = base64.b64decode(result["audio_base64"])
+            if result.ok:
+                audio_data = base64.b64decode(result.audio_base64 or "")
                 if output:
                     with open(output, "wb") as f:
                         f.write(audio_data)
                     print(f"音声データを {output} に保存しました。")
-                    print(f"エンジン: {result['engine']}")
-                    print(f"メッセージ: {result['message']}")
+                    print(f"エンジン: {result.engine}")
+                    print(f"メッセージ: {result.message}")
                 elif play:
                     ok = await _play_audio(audio_data)
                     if not ok:
@@ -70,19 +70,18 @@ async def synthesize_text(
                             "エラー: 再生に使えるコマンド (paplay / aplay) が見つかりません。"
                         )
                         return 1
-                    print(f"✅ 再生完了 (エンジン: {result['engine']})")
+                    print(f"✅ 再生完了 (エンジン: {result.engine})")
                 else:
-                    print(f"エンジン: {result['engine']}")
-                    print(f"メッセージ: {result['message']}")
-                    print(
-                        f"音声データ (Base64): {result['audio_base64'][:100]}..."
-                        if result["audio_base64"]
-                        else "音声データ: None"
-                    )
-                    if len(result["audio_base64"] or "") > 100:
-                        print(f"... (全長: {len(result['audio_base64'] or '')} 文字)")
+                    print(f"エンジン: {result.engine}")
+                    print(f"メッセージ: {result.message}")
+                    if result.audio_base64:
+                        print(f"音声データ (Base64): {result.audio_base64[:100]}...")
+                        if len(result.audio_base64) > 100:
+                            print(f"... (全長: {len(result.audio_base64)} 文字)")
+                    else:
+                        print("音声データ: None")
             else:
-                print(f"エラー: {result['message']}")
+                print(f"エラー: {result.message}")
                 return 1
     except Exception as e:
         print(f"エラー: {e}")
@@ -104,7 +103,7 @@ async def play_text(
         async with TTSSkill(
             default_engine=engine or "piperplus", **engine_kwargs
         ) as skill:
-            kwargs = {}
+            kwargs: dict = {}
             if volume is not None:
                 kwargs["volume"] = volume
             if pitch is not None:
@@ -114,10 +113,10 @@ async def play_text(
             if model is not None:
                 kwargs["model"] = model
             result = await skill.play(text=text, speed=speed, engine=engine, **kwargs)
-            if result["status"] == "ok":
-                print(f"✅ {result['message']} (エンジン: {result['engine']})")
+            if result.ok:
+                print(f"✅ {result.message} (エンジン: {result.engine})")
             else:
-                print(f"エラー: {result['message']}")
+                print(f"エラー: {result.message}")
                 return 1
     except Exception as e:
         print(f"エラー: {e}")
@@ -132,19 +131,19 @@ async def test_connection(
         async with TTSSkill(
             default_engine=engine or "piperplus", **engine_kwargs
         ) as skill:
-            kwargs = {}
+            kwargs: dict = {}
             if style_id is not None:
                 kwargs["style_id"] = style_id
             result = await skill.synthesize(
                 text="テスト", speed=1.0, engine=engine, **kwargs
             )
 
-            if result["status"] == "ok":
+            if result.ok:
                 print("✅ 接続成功!")
-                print(f"エンジン: {result['engine']}")
-                print(f"メッセージ: {result['message']}")
+                print(f"エンジン: {result.engine}")
+                print(f"メッセージ: {result.message}")
             else:
-                print(f"❌ 接続失敗: {result['message']}")
+                print(f"❌ 接続失敗: {result.message}")
                 return 1
     except Exception as e:
         print(f"❌ エラー: {e}")

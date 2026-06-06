@@ -1,16 +1,21 @@
 import pytest
 from unittest.mock import patch, AsyncMock
 from vox4ai_skill_lib import api
+from vox4ai_skill_lib.skill import TTSResult
 
 
 class FakeSkill:
     def __init__(self, result=None, raise_exc=None):
-        self.result = result or {
-            "status": "ok",
-            "engine": "mock",
-            "message": "ok",
-            "audio_base64": "YWJj",
-        }
+        if result is None:
+            result = TTSResult(
+                status="ok",
+                engine="mock",
+                message="ok",
+                audio_base64="YWJj",
+            )
+        elif isinstance(result, dict):
+            result = TTSResult(**result)
+        self.result = result
         self.raise_exc = raise_exc
         self.synthesize_calls = []
         self.play_calls = []
@@ -215,10 +220,12 @@ async def test_synthesize_text_exception(capsys):
 
 
 @pytest.mark.asyncio
-async def test_synthesize_text_no_audio_data_raises(capsys):
-    """audio_base64=None is an edge case: base64decode raises and api.py surfaces it as error."""
+async def test_synthesize_text_no_audio_data_handles_gracefully(capsys):
+    """audio_base64=None (e.g. VoiSonaTalk) はエラーを出さず '音声データ: None' を表示するだけ。"""
     fake = FakeSkill(
-        result={"status": "ok", "engine": "mock", "message": "ok", "audio_base64": None}
+        result=TTSResult(
+            status="ok", engine="mock", message="ok", audio_base64=None
+        )
     )
     with patch.object(api, "TTSSkill", return_value=fake):
         code = await api.synthesize_text(
@@ -231,7 +238,9 @@ async def test_synthesize_text_no_audio_data_raises(capsys):
             output=None,
             engine_kwargs={},
         )
-    assert code == 1
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "音声データ: None" in out
 
 
 @pytest.mark.asyncio
